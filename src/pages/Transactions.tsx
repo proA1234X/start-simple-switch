@@ -132,83 +132,32 @@ const Transactions = () => {
       return;
     }
 
-    // Validate source
-    if (exchangeDirection === 'normal') {
-      // للتحويل العادي: يجب أن يكون من عميل أو عميل نقدي
-      if (!isCashCustomer && !fromCustomerId) {
-        toast({
-          variant: 'destructive',
-          title: 'خطأ',
-          description: 'يجب اختيار العميل المصدر',
-        });
-        return;
-      }
-      // التحقق من اسم العميل النقدي
-      if (isCashCustomer && !cashCustomerName.trim()) {
-        toast({
-          variant: 'destructive',
-          title: 'خطأ',
-          description: 'يجب إدخال اسم العميل النقدي',
-        });
-        return;
-      }
-      // يجب أن يكون إلى حساب (vault)
-      if (!toVaultId) {
-        toast({
-          variant: 'destructive',
-          title: 'خطأ',
-          description: 'يجب اختيار الحساب',
-        });
-        return;
-      }
-    } else {
-      // للتحويل العكسي: التحقق العادي
-      if (fromType === 'vault' && !fromVaultId) {
-        toast({
-          variant: 'destructive',
-          title: 'خطأ',
-          description: 'يجب اختيار الخزنة المصدر',
-        });
-        return;
-      }
-      if (fromType === 'customer' && !fromCustomerId) {
-        toast({
-          variant: 'destructive',
-          title: 'خطأ',
-          description: 'يجب اختيار العميل المصدر',
-        });
-        return;
-      }
-
-      // Validate destination
-      if (toType === 'vault' && !toVaultId) {
-        toast({
-          variant: 'destructive',
-          title: 'خطأ',
-          description: 'يجب اختيار الخزنة الوجهة',
-        });
-        return;
-      }
-      if (toType === 'customer' && !toCustomerId) {
-        toast({
-          variant: 'destructive',
-          title: 'خطأ',
-          description: 'يجب اختيار العميل الوجهة',
-        });
-        return;
-      }
-      
-      // Prevent same source and destination
-      if (fromType === toType && 
-          ((fromType === 'vault' && fromVaultId === toVaultId) ||
-           (fromType === 'customer' && fromCustomerId === toCustomerId))) {
-        toast({
-          variant: 'destructive',
-          title: 'خطأ',
-          description: 'لا يمكن التحويل من نفس المصدر إلى نفس الوجهة',
-        });
-        return;
-      }
+    // Validate source - نفس التحقق للعادي والعكسي
+    if (!isCashCustomer && !fromCustomerId) {
+      toast({
+        variant: 'destructive',
+        title: 'خطأ',
+        description: 'يجب اختيار العميل المصدر',
+      });
+      return;
+    }
+    // التحقق من اسم العميل النقدي
+    if (isCashCustomer && !cashCustomerName.trim()) {
+      toast({
+        variant: 'destructive',
+        title: 'خطأ',
+        description: 'يجب إدخال اسم العميل النقدي',
+      });
+      return;
+    }
+    // يجب أن يكون إلى حساب (vault)
+    if (!toVaultId) {
+      toast({
+        variant: 'destructive',
+        title: 'خطأ',
+        description: 'يجب اختيار الحساب',
+      });
+      return;
     }
 
     const currentRate = rates[0];
@@ -237,10 +186,10 @@ const Transactions = () => {
       amount: amt,
       currency: finalFromCurrency,
       customerId: customerId || undefined,
-      fromVaultId: (exchangeDirection === 'normal' ? undefined : (fromType === 'vault' ? fromVaultId : undefined)),
-      toVaultId: (exchangeDirection === 'normal' ? toVaultId : (toType === 'vault' ? toVaultId : undefined)),
-      fromCustomerId: (exchangeDirection === 'normal' ? (isCashCustomer ? 'cash-customer' : fromCustomerId) : (fromType === 'customer' ? fromCustomerId : undefined)),
-      toCustomerId: (exchangeDirection === 'normal' ? undefined : (toType === 'customer' ? toCustomerId : undefined)),
+      fromVaultId: undefined,
+      toVaultId: toVaultId,
+      fromCustomerId: isCashCustomer ? 'cash-customer' : fromCustomerId,
+      toCustomerId: undefined,
       fromCurrency: finalFromCurrency,
       toCurrency: finalToCurrency,
       exchangeDirection: exchangeDirection,
@@ -308,112 +257,27 @@ const Transactions = () => {
         vault.balanceAED -= tx.amount;
       }
     } else if (tx.type === 'transfer') {
-      // للتحويل العادي: المبلغ يُضاف إلى حساب المستلم فقط (toVaultId)
+      // المبلغ يُضاف إلى حساب المستلم فقط (toVaultId)
       // لا يُخصم من أي مصدر لأن العميل النقدي دفع مباشرة
-      if (tx.exchangeDirection === 'normal') {
-        // Calculate target amount with conversion
-        let targetAmount = tx.amount;
-        if (tx.fromCurrency !== tx.toCurrency && tx.exchangeRate) {
-          if (tx.fromCurrency === 'SDG') {
-            targetAmount = tx.amount / tx.exchangeRate;
+      
+      // Calculate target amount with conversion
+      let targetAmount = tx.amount;
+      if (tx.fromCurrency !== tx.toCurrency && tx.exchangeRate) {
+        if (tx.fromCurrency === 'SDG') {
+          targetAmount = tx.amount / tx.exchangeRate;
+        } else {
+          targetAmount = tx.amount * tx.exchangeRate;
+        }
+      }
+      
+      // Add to recipient's account (toVaultId)
+      if (tx.toVaultId) {
+        const toVault = vaultsData.find(v => v.id === tx.toVaultId);
+        if (toVault) {
+          if (tx.toCurrency === 'SDG') {
+            toVault.balanceSDG += targetAmount;
           } else {
-            targetAmount = tx.amount * tx.exchangeRate;
-          }
-        }
-        
-        // Add to recipient's account (toVaultId)
-        if (tx.toVaultId) {
-          const toVault = vaultsData.find(v => v.id === tx.toVaultId);
-          if (toVault) {
-            if (tx.toCurrency === 'SDG') {
-              toVault.balanceSDG += targetAmount;
-            } else {
-              toVault.balanceAED += targetAmount;
-            }
-          }
-        }
-      } else {
-        // للتحويل العكسي: نفس السلوك القديم
-        // Get source (vault or customer)
-        let sourceBalance = 0;
-        if (tx.fromVaultId) {
-          const fromVault = vaultsData.find(v => v.id === tx.fromVaultId);
-          if (!fromVault) return;
-          sourceBalance = tx.fromCurrency === 'SDG' ? fromVault.balanceSDG : fromVault.balanceAED;
-          
-          if (sourceBalance < tx.amount) {
-            toast({
-              variant: 'destructive',
-              title: 'خطأ',
-              description: 'الرصيد غير كافٍ في الخزنة المصدر',
-            });
-            return;
-          }
-        } else if (tx.fromCustomerId) {
-          const fromCustomer = customersData.find(c => c.id === tx.fromCustomerId);
-          if (fromCustomer) {
-            sourceBalance = tx.fromCurrency === 'SDG' ? fromCustomer.balanceSDG : fromCustomer.balanceAED;
-            
-            if (sourceBalance < tx.amount) {
-              toast({
-                variant: 'destructive',
-                title: 'خطأ',
-                description: 'الرصيد غير كافٍ في حساب العميل المصدر',
-              });
-              return;
-            }
-          }
-        }
-        
-        // Deduct from source
-        if (tx.fromVaultId) {
-          const fromVault = vaultsData.find(v => v.id === tx.fromVaultId);
-          if (fromVault) {
-            if (tx.fromCurrency === 'SDG') {
-              fromVault.balanceSDG -= tx.amount;
-            } else {
-              fromVault.balanceAED -= tx.amount;
-            }
-          }
-        } else if (tx.fromCustomerId) {
-          const fromCustomer = customersData.find(c => c.id === tx.fromCustomerId);
-          if (fromCustomer) {
-            if (tx.fromCurrency === 'SDG') {
-              fromCustomer.balanceSDG -= tx.amount;
-            } else {
-              fromCustomer.balanceAED -= tx.amount;
-            }
-          }
-        }
-        
-        // Calculate target amount (with conversion if needed)
-        let targetAmount = tx.amount;
-        if (tx.fromCurrency !== tx.toCurrency && tx.exchangeRate) {
-          if (tx.fromCurrency === 'SDG') {
-            targetAmount = tx.amount / tx.exchangeRate;
-          } else {
-            targetAmount = tx.amount * tx.exchangeRate;
-          }
-        }
-        
-        // Add to destination
-        if (tx.toVaultId) {
-          const toVault = vaultsData.find(v => v.id === tx.toVaultId);
-          if (toVault) {
-            if (tx.toCurrency === 'SDG') {
-              toVault.balanceSDG += targetAmount;
-            } else {
-              toVault.balanceAED += targetAmount;
-            }
-          }
-        } else if (tx.toCustomerId) {
-          const toCustomer = customersData.find(c => c.id === tx.toCustomerId);
-          if (toCustomer) {
-            if (tx.toCurrency === 'SDG') {
-              toCustomer.balanceSDG += targetAmount;
-            } else {
-              toCustomer.balanceAED += targetAmount;
-            }
+            toVault.balanceAED += targetAmount;
           }
         }
       }
@@ -446,7 +310,7 @@ const Transactions = () => {
 
   const approveTransaction = (txId: string) => {
     const tx = transactions.find(t => t.id === txId);
-    if (!tx || tx.status !== 'confirmed' || tx.exchangeDirection !== 'normal') return;
+    if (!tx || tx.status !== 'confirmed') return;
 
     const vaultsData = storage.getVaults();
     const mainVault = vaultsData.find(v => v.isMainVault);
@@ -643,18 +507,13 @@ const Transactions = () => {
                 <Label htmlFor="type">نوع العملية *</Label>
                 <Select value={exchangeDirection} onValueChange={(v) => {
                   setExchangeDirection(v as ExchangeDirection);
-                  // إعادة تعيين النوع حسب نوع التحويل
-                  if (v === 'normal') {
-                    setFromType('customer');
-                    setToType('vault');
-                    setFromVaultId('');
-                    setToCustomerId('');
-                    setIsCashCustomer(false);
-                    setCashCustomerName('');
-                  } else {
-                    setFromType('vault');
-                    setToType('customer');
-                  }
+                  // إعادة تعيين القيم
+                  setFromType('customer');
+                  setToType('vault');
+                  setFromVaultId('');
+                  setToCustomerId('');
+                  setIsCashCustomer(false);
+                  setCashCustomerName('');
                 }}>
                   <SelectTrigger>
                     <SelectValue />
@@ -752,106 +611,75 @@ const Transactions = () => {
                   </div>
                 </>
               ) : (
-                // التحويل العكسي: من/إلى عادي
+                // التحويل العكسي: نفس التحويل العادي مع اختلاف السعر فقط
                 <>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>من *</Label>
-                      <Select value={fromType} onValueChange={(v: 'vault' | 'customer') => {
-                        setFromType(v);
-                        setFromVaultId('');
-                        setFromCustomerId('');
-                      }}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="vault">خزنة</SelectItem>
-                          <SelectItem value="customer">عميل</SelectItem>
-                        </SelectContent>
-                      </Select>
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2 space-x-reverse mb-2">
+                      <input
+                        type="checkbox"
+                        id="cashCustomerReverse"
+                        checked={isCashCustomer}
+                        onChange={(e) => {
+                          setIsCashCustomer(e.target.checked);
+                          if (e.target.checked) {
+                            setFromCustomerId('');
+                          } else {
+                            setCashCustomerName('');
+                          }
+                        }}
+                        className="h-4 w-4"
+                      />
+                      <Label htmlFor="cashCustomerReverse" className="cursor-pointer">
+                        عميل نقدي (تحويل مباشر بدون رصيد)
+                      </Label>
                     </div>
-                    <div className="space-y-2">
-                      <Label>إلى *</Label>
-                      <Select value={toType} onValueChange={(v: 'vault' | 'customer') => {
-                        setToType(v);
-                        setToVaultId('');
-                        setToCustomerId('');
-                      }}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="vault">خزنة</SelectItem>
-                          <SelectItem value="customer">عميل</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    
+                    {isCashCustomer ? (
+                      <>
+                        <Label>اسم العميل النقدي *</Label>
+                        <Input
+                          value={cashCustomerName}
+                          onChange={(e) => setCashCustomerName(e.target.value)}
+                          placeholder="أدخل اسم العميل"
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <Label>من العميل *</Label>
+                        <Select value={fromCustomerId} onValueChange={(v) => {
+                          setFromCustomerId(v);
+                          setFromType('customer');
+                        }}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="اختر العميل" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {customers.map(c => (
+                              <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </>
+                    )}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      {fromType === 'vault' ? (
-                        <>
-                          <Label>من الخزنة *</Label>
-                          <Select value={fromVaultId} onValueChange={setFromVaultId}>
-                            <SelectTrigger>
-                              <SelectValue placeholder="اختر الخزنة" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {vaults.map(v => (
-                                <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </>
-                      ) : (
-                        <>
-                          <Label>من العميل *</Label>
-                          <Select value={fromCustomerId} onValueChange={setFromCustomerId}>
-                            <SelectTrigger>
-                              <SelectValue placeholder="اختر العميل" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {customers.map(c => (
-                                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </>
-                      )}
-                    </div>
-                    <div className="space-y-2">
-                      {toType === 'vault' ? (
-                        <>
-                          <Label>إلى الخزنة *</Label>
-                          <Select value={toVaultId} onValueChange={setToVaultId}>
-                            <SelectTrigger>
-                              <SelectValue placeholder="اختر الخزنة" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {vaults.map(v => (
-                                <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </>
-                      ) : (
-                        <>
-                          <Label>إلى العميل *</Label>
-                          <Select value={toCustomerId} onValueChange={setToCustomerId}>
-                            <SelectTrigger>
-                              <SelectValue placeholder="اختر العميل" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {customers.map(c => (
-                                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </>
-                      )}
-                    </div>
+                  <div className="space-y-2">
+                    <Label>إلى الحساب *</Label>
+                    <Select value={toVaultId} onValueChange={(v) => {
+                      setToVaultId(v);
+                      setToType('vault');
+                    }}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="اختر الحساب" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {vaults
+                          .filter(v => !v.isMainVault)
+                          .map(v => (
+                            <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </>
               )}
