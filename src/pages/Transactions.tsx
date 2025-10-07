@@ -767,7 +767,7 @@ const Transactions = () => {
                         </Button>
                       </div>
                     )}
-                    {tx.status === 'confirmed' && !tx.approvedAt && tx.exchangeDirection === 'normal' && (
+                    {tx.status === 'confirmed' && !tx.approvedAt && (
                       <Button
                         size="sm"
                         variant="default"
