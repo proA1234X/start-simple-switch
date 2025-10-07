@@ -244,7 +244,7 @@ const Transactions = () => {
       fromCurrency: finalFromCurrency,
       toCurrency: finalToCurrency,
       exchangeDirection: exchangeDirection,
-      exchangeRate: currentRate ? (finalFromCurrency === 'SDG' ? currentRate.buyRate : currentRate.sellRate) : undefined,
+      exchangeRate: currentRate ? (exchangeDirection === 'normal' ? currentRate.buyRate : currentRate.sellRate) : undefined,
       profitLoss: profitLoss,
       notes: isCashCustomer ? `عميل نقدي: ${cashCustomerName.trim()}${notes.trim() ? ' | ' + notes.trim() : ''}` : (notes.trim() || undefined),
       createdAt: new Date().toISOString(),
